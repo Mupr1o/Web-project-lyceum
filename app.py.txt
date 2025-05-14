@@ -1,0 +1,82 @@
+from flask import Flask, render_template, request, redirect, url_for, flash
+from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime
+from flask_wtf import FlaskForm
+from wtforms import StringField, TextAreaField, SubmitField
+from wtforms.validators import DataRequired
+
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///blog.db'  # Путь к БД
+app.config['SECRET_KEY'] = 'your_secret_key'  # Замените на свой секретный ключ
+db = SQLAlchemy(app)
+
+
+class Article(db.Model):  # Модель статьи
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(100), nullable=False)
+    intro = db.Column(db.String(300), nullable=False)
+    text = db.Column(db.Text, nullable=False)
+    date = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return '<Article %r>' % self.id
+
+
+class ArticleForm(FlaskForm):  # Форма для создания и редактирования статьи
+    title = StringField('Название', validators=[DataRequired()])
+    intro = StringField('Текст', validators=[DataRequired()])
+    text = TextAreaField('ㅤ')
+    submit = SubmitField('Создать')
+
+
+@app.route('/')
+def index():  # Главная страница
+    articles = Article.query.order_by(Article.date.desc()).all()
+    return render_template('index.html', articles=articles)
+
+
+@app.route('/article/new', methods=['GET', 'POST'])
+def new_article():  # Страница для создания новой статьи
+    form = ArticleForm()
+    if form.validate_on_submit():
+        article = Article(title=form.title.data, intro=form.intro.data, text=form.text.data)
+        db.session.add(article)
+        db.session.commit()
+        flash('Заметка успешно создана!', 'success')
+        return redirect(url_for('index'))
+    return render_template('create_article.html', form=form)
+
+
+@app.route('/article/edit/<int:id>', methods=['GET', 'POST'])
+def edit_article(id):  # Страница для редактирования статьи
+    article = Article.query.get_or_404(id)
+    form = ArticleForm()
+    if form.validate_on_submit():
+        article.title = form.title.data
+        article.intro = form.intro.data
+        article.text = form.text.data
+        db.session.commit()
+        flash('Заметка успешно изменена!', 'success')
+        return redirect(url_for('index'))
+
+    # Заполнение формы текущими данными статьи
+    form.title.data = article.title
+    form.intro.data = article.intro
+    form.text.data = article.text
+
+    return render_template('edit_article.html', form=form)
+
+
+@app.route('/article/delete/<int:id>', methods=['POST'])
+def delete_article(id):  # Удаление статьи
+    article = Article.query.get_or_404(id)
+    db.session.delete(article)
+    db.session.commit()
+    flash('Заметка успешно удалена!', 'success')
+    return redirect(url_for('index'))
+
+
+if __name__ == "__main__":
+    with app.app_context():
+        db.create_all()  # Создание таблиц
+    app.run(debug=True)
